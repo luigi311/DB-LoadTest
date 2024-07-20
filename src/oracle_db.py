@@ -23,6 +23,9 @@ class OracleDB:
                         break
                     rows_fetched += len(rows)
                     print(f"Instance {instance_id}: Fetched {rows_fetched} rows")
+            if fetch_size == -1:
+                rows = await cursor.fetchall()
+                print(f"Instance {instance_id}: Fetched {len(rows)} rows")
 
 
     async def run_query(self, sql_query, instance_id, fetch_size=0):

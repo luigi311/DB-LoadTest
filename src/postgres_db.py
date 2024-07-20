@@ -1,6 +1,8 @@
 import asyncpg
 import time
 
+max_fetch_size = 100_000_000
+
 class PostgresDB:
     def __init__(self, dsn, user, password):
         self.dsn = dsn
@@ -29,9 +31,12 @@ class PostgresDB:
                         rows_fetched += len(rows)
                     
                     print(f"Instance {instance_id}: Fetched {rows_fetched} rows")
+                elif fetch_size == -1:
+                    rows = await cur.fetch(max_fetch_size)
+                    print(f"Instance {instance_id}: Fetched {len(rows)} rows")
                 else:
                     while True:
-                        rows = await cur.forward(1000000)
+                        rows = await cur.forward(max_fetch_size)
                         if not rows:
                             break
 
