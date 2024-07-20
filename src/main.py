@@ -27,6 +27,13 @@ async def execute_queries_concurrently(db, sql_query, num_instances, fetch_size)
     durations = await asyncio.gather(*tasks)
 
     print(durations)
+    
+    # Remove None values from the list
+    durations = [duration for duration in durations if duration is not None]
+
+    if len(durations) == 0:
+        print("No instances completed successfully")
+        return
 
     # Print the total execution time and each instance's execution time
     print(f"Total execution time: {sum(durations):.2f} seconds")
