@@ -41,7 +41,7 @@ def main():
     parser.add_argument("--sql_file", required=True, help="Path to the SQL file")
     parser.add_argument("--instances", type=int, required=True, help="Number of parallel instances to run")
     parser.add_argument("--fetch_size", type=int, default=0, help="Number of rows to fetch per batch (default 0, no fetch)")
-    parser.add_argument("--database", default="postgres", choices=["postgres"], help="Database type (default postgres)")
+    parser.add_argument("--database", default="postgres", choices=["postgres","oracle"], help="Database type (default postgres)")
 
     args = parser.parse_args()
 
@@ -53,6 +53,9 @@ def main():
     if args.database == "postgres":
         from src.postgres_db import PostgresDB
         db = PostgresDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
+    elif args.database == "oracle":
+        from src.oracle_db import OracleDB
+        db = OracleDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
     else:
         raise ValueError(f"Unsupported database type: {args.database}")
     
