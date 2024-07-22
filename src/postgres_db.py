@@ -67,4 +67,4 @@ class PostgresDB:
         return durations
 
     def entry(self, sql_query, num_instances, fetch_size=0):
-        asyncio.run(self.executor(sql_query, num_instances, fetch_size))
+        return asyncio.run(self.executor(sql_query, num_instances, fetch_size))
