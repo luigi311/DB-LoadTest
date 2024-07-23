@@ -72,11 +72,8 @@ class OracleDB:
         for instance_id in range(num_instances):
             tasks.append([self.timer, sql_query, instance_id, fetch_size])
 
-        for duration in future_thread_executor(tasks, num_instances):
+        for duration in future_thread_executor(tasks, num_instances, override_threads=True):
             if duration:
                 durations.append(duration)
-
-            else:
-                print(duration)
 
         return durations
