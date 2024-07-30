@@ -10,6 +10,7 @@ db_loadtest is a tool designed to test the load and performance of SQL queries o
   - Execute SQL queries concurrently 
   - Measure and report execution times for each instance
   - Fetch no rows or in batches or all at once
+  - Run a single query or a folder of queries
 
 ## Requirements
 
@@ -40,7 +41,8 @@ python main.py --dsn <DSN> --user <USERNAME> --sql_file <SQL_FILE_PATH> --instan
 
     --dsn: Data Source Name (DSN) for the database.
     --user: Username for the database.
-    --sql_file: Path to the SQL file containing the query to be executed.
+    --sql_file: Path to the SQL file.
+    --sql_folder: Path to the folder containing multiple SQL files.
     --instances: Number of parallel instances to run.
     --fetch_size (optional): Number of rows to fetch per batch. Default is 0 (no fetch). Use -1 to fetch all rows at once.
     --database (optional): Database type (postgres or oracle). Default is postgres.
