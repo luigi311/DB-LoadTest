@@ -7,12 +7,15 @@ from src.functions import future_thread_executor
 
 
 class OracleDB:
-    def __init__(self, dsn: str, user: str, password: str):
-        self.dsn = dsn
-        self.user = user
-        self.password = password
+    def __init__(self, dsn: str, user: str, password: str, printing: bool = False):
+        self.dsn: str = dsn
+        self.user: str = user
+        self.password: str = password
+        self.printing: bool = printing
 
     def execute_query(self, sql_query: str, instance_id: int, fetch_size: int = 0):
+        connection = None
+        
         try:
             connection = oracledb.connect(
                 user=self.user, password=self.password, dsn=self.dsn
@@ -28,9 +31,8 @@ class OracleDB:
             with connection.cursor(scrollable=True) as cursor:
                 cursor.execute(sql_query)
 
+                rows_fetched = 0
                 if fetch_size > 0:
-                    rows_fetched = 0
-
                     while True:
                         rows = cursor.fetchmany(fetch_size)
 
@@ -38,18 +40,29 @@ class OracleDB:
                             break
 
                         rows_fetched += len(rows)
-                        print(f"Instance {instance_id}: Fetched {rows_fetched} rows")
+                        
+                        if self.printing:
+                            for row in rows:
+                                print(row)
 
                 elif fetch_size == -1:
                     rows = cursor.fetchall()
 
-                    print(f"Instance {instance_id}: Fetched {len(rows)} rows")
+                    rows_fetched = len(rows)
+
+                    if self.printing:
+                        for row in rows:
+                            print(row)
 
                 else:
                     cursor.scroll(mode="last")
 
+                if rows_fetched > 0:
+                    print(f"Instance {instance_id}: Rows fetched: {rows_fetched}")
+
         finally:
-            connection.close()
+            if connection:
+                connection.close()
 
     def timer(self, sql_query: str, instance_id: int, fetch_size: int = 0):
         try:

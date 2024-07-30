@@ -9,10 +9,11 @@ max_fetch_size: int = 100_000_000
 
 
 class PostgresDB:
-    def __init__(self, dsn: str, user: str, password: str):
-        self.dsn = dsn
-        self.user = user
-        self.password = password
+    def __init__(self, dsn: str, user: str, password: str, printing: bool = False):
+        self.dsn: str = dsn
+        self.user: str = user
+        self.password: str = password
+        self.printing: bool = printing
 
     async def execute_query(
         self, sql_query: str, instance_id: int, fetch_size: int = 0
@@ -34,29 +35,33 @@ class PostgresDB:
             async with conn.transaction():
                 cur = await conn.cursor(sql_query)
 
-                if fetch_size > 0:
-                    rows_fetched = 0
-
-                    while True:
+                rows_fetched = 0
+                while True:
+                    
+                    if fetch_size > 0:
                         rows = await cur.fetch(fetch_size)
 
-                        if not rows:
-                            break
+                    elif fetch_size == -1:
+                        rows = await cur.fetch(max_fetch_size)
 
-                        rows_fetched += len(rows)
-
-                    print(f"Instance {instance_id}: Fetched {rows_fetched} rows")
-
-                elif fetch_size == -1:
-                    rows = await cur.fetch(max_fetch_size)
-                    print(f"Instance {instance_id}: Fetched {len(rows)} rows")
-
-                else:
-                    while True:
+                    else:
                         rows = await cur.forward(max_fetch_size)
 
-                        if not rows:
-                            break
+                    if isinstance(rows, list):
+                        rows_fetched += len(rows)
+                    else:
+                        rows_fetched += rows
+
+                    if not rows:
+                        break
+
+                    if self.printing:
+                        if isinstance(rows, list):
+                            for row in rows:
+                                print(row)
+
+                if rows_fetched > 0:
+                    print(f"Instance {instance_id}: {rows_fetched} rows")
 
         finally:
             if conn:

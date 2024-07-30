@@ -95,6 +95,11 @@ def arguments() -> argparse.Namespace:
         choices=["postgres", "oracle"],
         help="Database type (default postgres)",
     )
+    parser.add_argument(
+        "--print",
+        action="store_true",
+        help="Print the results of the SQL query (default False)",
+    )
     return parser.parse_args()
 
 
@@ -110,9 +115,9 @@ def main():
         raise ValueError("SQL query is empty")
 
     if args.database == "postgres":
-        db = PostgresDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
+        db = PostgresDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "), args.print)
     elif args.database == "oracle":
-        db = OracleDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
+        db = OracleDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "), args.print)
     else:
         raise ValueError(f"Unsupported database type: {args.database}")
 

@@ -46,6 +46,7 @@ python main.py --dsn <DSN> --user <USERNAME> --sql_file <SQL_FILE_PATH> --instan
     --instances: Number of parallel instances to run.
     --fetch_size (optional): Number of rows to fetch per batch. Default is 0 (no fetch). Use -1 to fetch all rows at once.
     --database (optional): Database type (postgres or oracle). Default is postgres.
+    --print (optional): Print the query results. Default is False.
 
 ### Example
   ```bash
