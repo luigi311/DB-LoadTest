@@ -1,5 +1,9 @@
 import argparse
 import getpass
+import os
+
+from src.postgres_db import PostgresDB
+from src.oracle_db import OracleDB
 
 
 def read_sql_file(file_path):
@@ -16,6 +20,25 @@ def read_sql_file(file_path):
     return sql_query
 
 
+def read_sql_folder(folder_path):
+    """
+    Read the SQL query from a folder containing multiple SQL files.
+
+    :param folder_path: Path to the folder containing multiple SQL files
+    :return: List of SQL queries as strings
+    """
+
+    sql_queries = []
+
+    for file_name in os.listdir(folder_path):
+        if file_name.endswith(".sql"):
+            file_path = os.path.join(folder_path, file_name)
+            sql_query = read_sql_file(file_path)
+            sql_queries.append(sql_query)
+
+    return sql_queries
+
+
 def execute_queries_concurrently(db, sql_query, num_instances, fetch_size):
     # Get the list of durations for each instance
     durations = db.entry(sql_query, num_instances, fetch_size)
@@ -28,11 +51,11 @@ def execute_queries_concurrently(db, sql_query, num_instances, fetch_size):
         print("No instances completed successfully")
         return
 
-    # Print the total execution time and each instance's execution time
-    print(f"Total execution time: {sum(durations):.2f} seconds")
-
     for i, duration in enumerate(durations):
         print(f"Instance {i + 1}: Execution time: {duration:.2f} seconds")
+
+    # Print the aggregated execution time and each instance's execution time
+    print(f"Aggregated execution time: {sum(durations):.2f} seconds")
 
 
 def arguments():
@@ -43,7 +66,10 @@ def arguments():
         "--dsn", required=True, help="Data Source Name (DSN) for the database"
     )
     parser.add_argument("--user", required=True, help="Username for the database")
-    parser.add_argument("--sql_file", required=True, help="Path to the SQL file")
+    parser.add_argument("--sql_file", help="Path to the SQL file")
+    parser.add_argument(
+        "--sql_folder", help="Path to the folder containing multiple SQL files"
+    )
     parser.add_argument(
         "--instances",
         type=int,
@@ -68,19 +94,18 @@ def arguments():
 def main():
     args = arguments()
 
-    sql_query = read_sql_file(args.sql_file)
+    if args.sql_folder:
+        sql_query = read_sql_folder(args.sql_folder)
+    elif args.sql_file:
+        sql_query = read_sql_file(args.sql_file)
 
     if not sql_query:
         raise ValueError("SQL query is empty")
 
     if args.database == "postgres":
-        from src.postgres_db import PostgresDB
-
         db = PostgresDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
 
     elif args.database == "oracle":
-        from src.oracle_db import OracleDB
-
         db = OracleDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
 
     else:
