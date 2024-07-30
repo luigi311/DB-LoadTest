@@ -8,7 +8,7 @@ def future_thread_executor(
 ):
     futures_list = []
     results = []
-    workers = min(int(os.getenv("MAX_THREADS", 32)), os.cpu_count() * 2)
+    workers = os.cpu_count() * 2
 
     if threads:
         workers = min(threads, workers)
