@@ -64,6 +64,8 @@ def execute_queries_concurrently(
     # Print the aggregated execution time and each instance's execution time
     print(f"Aggregated execution time: {sum(durations):.2f} seconds")
 
+    print(f"Average execution time: {sum(durations) / len(durations):.2f} seconds")
+
 
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
