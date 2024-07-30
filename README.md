@@ -49,7 +49,11 @@ python main.py --dsn <DSN> --user <USERNAME> --sql_file <SQL_FILE_PATH> --instan
 
 ### Example
   ```bash
-python main.py --dsn mydb_dsn --user myuser --sql_file query.sql --instances 5 --fetch_size 100 --database oracle
+python main.py --dsn "localhost:1521/FREE" --user "system" --sql_file .\oracle.sql --instances 5 --database "oracle" 
+  ```
+
+  ```bash
+python main.py --dsn "postgresql://localhost:5432/loadtest" --user "loadtest" --sql_folder .\postgres --instances 10 --database "postgres"
   ```
 
 ## Contributing
