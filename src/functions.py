@@ -1,14 +1,15 @@
 import os
 
 from concurrent.futures import ThreadPoolExecutor
+from typing import Optional
 
 
 def future_thread_executor(
-    args: list, threads: int = None, override_threads: bool = False
+    args: list, threads: Optional[int], override_threads: bool = False
 ):
     futures_list = []
     results = []
-    workers = os.cpu_count() * 2
+    workers: int = os.cpu_count() * 2
 
     if threads:
         workers = min(threads, workers)

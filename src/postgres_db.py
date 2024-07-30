@@ -2,16 +2,21 @@ import asyncio
 import asyncpg
 import time
 
-max_fetch_size = 100_000_000
+from typing import Union
+
+
+max_fetch_size: int = 100_000_000
 
 
 class PostgresDB:
-    def __init__(self, dsn, user, password):
+    def __init__(self, dsn: str, user: str, password: str):
         self.dsn = dsn
         self.user = user
         self.password = password
 
-    async def execute_query(self, sql_query, instance_id, fetch_size=0):
+    async def execute_query(
+        self, sql_query: str, instance_id: int, fetch_size: int = 0
+    ):
         conn = None
 
         try:
@@ -20,7 +25,11 @@ class PostgresDB:
             )
 
             if not conn:
-                raise ("Could not connect to the database")
+                raise Exception(
+                    f"Instance {instance_id}: Could not connect to the database"
+                )
+            else:
+                print(f"Instance {instance_id}: Connected")
 
             async with conn.transaction():
                 cur = await conn.cursor(sql_query)
@@ -53,14 +62,16 @@ class PostgresDB:
             if conn:
                 await conn.close()
 
-    async def timer(self, sql_query, instance_id, fetch_size=0):
+    async def timer(self, sql_query: str, instance_id: int, fetch_size: int = 0):
         start_time = time.time()
         await self.execute_query(sql_query, instance_id, fetch_size)
         end_time = time.time()
 
         return end_time - start_time
 
-    async def executor(self, sql_query, num_instances, fetch_size=0):
+    async def executor(
+        self, sql_query: Union[str, list[str]], num_instances: int, fetch_size: int = 0
+    ):
         tasks = []
         if isinstance(sql_query, str):
             tasks = [
@@ -79,5 +90,7 @@ class PostgresDB:
 
         return durations
 
-    def entry(self, sql_query, num_instances, fetch_size=0):
+    def entry(
+        self, sql_query: Union[str, list[str]], num_instances: int, fetch_size: int = 0
+    ):
         return asyncio.run(self.executor(sql_query, num_instances, fetch_size))

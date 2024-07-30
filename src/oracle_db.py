@@ -1,16 +1,18 @@
 import oracledb
 import time
 
+from typing import Union
+
 from src.functions import future_thread_executor
 
 
 class OracleDB:
-    def __init__(self, dsn, user, password):
+    def __init__(self, dsn: str, user: str, password: str):
         self.dsn = dsn
         self.user = user
         self.password = password
 
-    def execute_query(self, sql_query, instance_id, fetch_size=0):
+    def execute_query(self, sql_query: str, instance_id: int, fetch_size: int = 0):
         try:
             connection = oracledb.connect(
                 user=self.user, password=self.password, dsn=self.dsn
@@ -49,7 +51,7 @@ class OracleDB:
         finally:
             connection.close()
 
-    def timer(self, sql_query, instance_id, fetch_size=0):
+    def timer(self, sql_query: str, instance_id: int, fetch_size: int = 0):
         try:
             start_time = time.time()
             self.execute_query(sql_query, instance_id, fetch_size)
@@ -61,7 +63,9 @@ class OracleDB:
             print(f"Instance {instance_id}: Oracle-Error-Code: {e.args[0].code}")
             print(f"Instance {instance_id}: Oracle-Error-Message: {e.args[0].message}")
 
-    def entry(self, sql_query, num_instances, fetch_size=0):
+    def entry(
+        self, sql_query: Union[str, list[str]], num_instances: int, fetch_size: int = 0
+    ):
         # Requires oracle thick client to use scroll. We can switch to the thin client once that feature
         # is implemented. Author said it is planned https://github.com/oracle/python-oracledb/issues/367
         oracledb.init_oracle_client()

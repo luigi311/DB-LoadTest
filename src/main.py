@@ -2,11 +2,13 @@ import argparse
 import getpass
 import os
 
+from typing import Union
+
 from src.postgres_db import PostgresDB
 from src.oracle_db import OracleDB
 
 
-def read_sql_file(file_path):
+def read_sql_file(file_path: str) -> str:
     """
     Read the SQL query from a file.
 
@@ -20,7 +22,7 @@ def read_sql_file(file_path):
     return sql_query
 
 
-def read_sql_folder(folder_path):
+def read_sql_folder(folder_path: str) -> list[str]:
     """
     Read the SQL query from a folder containing multiple SQL files.
 
@@ -39,7 +41,12 @@ def read_sql_folder(folder_path):
     return sql_queries
 
 
-def execute_queries_concurrently(db, sql_query, num_instances, fetch_size):
+def execute_queries_concurrently(
+    db: Union[PostgresDB, OracleDB],
+    sql_query: Union[str, list[str]],
+    num_instances: int,
+    fetch_size: int,
+):
     # Get the list of durations for each instance
     durations = db.entry(sql_query, num_instances, fetch_size)
     print(durations)
@@ -58,7 +65,7 @@ def execute_queries_concurrently(db, sql_query, num_instances, fetch_size):
     print(f"Aggregated execution time: {sum(durations):.2f} seconds")
 
 
-def arguments():
+def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run an SQL query on an Oracle or PostgreSQL database."
     )
@@ -104,10 +111,8 @@ def main():
 
     if args.database == "postgres":
         db = PostgresDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
-
     elif args.database == "oracle":
         db = OracleDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "))
-
     else:
         raise ValueError(f"Unsupported database type: {args.database}")
 
