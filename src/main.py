@@ -61,10 +61,10 @@ def execute_queries_concurrently(
     for i, duration in enumerate(durations):
         print(f"Instance {i + 1}: Execution time: {duration:.2f} seconds")
 
-    # Print the aggregated execution time and each instance's execution time
     print(f"Aggregated execution time: {sum(durations):.2f} seconds")
-
     print(f"Average execution time: {sum(durations) / len(durations):.2f} seconds")
+    print(f"Minimum execution time: {min(durations):.2f} seconds")
+    print(f"Maximum execution time: {max(durations):.2f} seconds")
 
 
 def arguments() -> argparse.Namespace:
