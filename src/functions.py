@@ -1,5 +1,10 @@
 import os
 
+# Set once per worker process by `init_worker` via the Pool initializer.
+# A multiprocessing.Barrier cannot be passed as a pickled map() argument under
+# the "spawn" start method; it must be inherited through the initializer.
+_barrier = None
+
 
 def resolve_process_count(requested: int | None) -> int:
     """Default to CPU count; always at least 1."""
@@ -28,6 +33,17 @@ def build_buckets(
     return [b for b in buckets if b]
 
 
+def init_worker(barrier):
+    """
+    Pool initializer: runs once per worker as it starts up. Stashes the shared
+    barrier in a module global so `worker` can reach it without it being passed
+    through map() (which would fail to pickle under the spawn start method).
+    """
+
+    global _barrier
+    _barrier = barrier
+
+
 def worker(payload):
     """
     Top-level worker so it is picklable by multiprocessing.
@@ -35,9 +51,19 @@ def worker(payload):
     payload = (db_factory, db_kwargs, bucket, fetch_size)
     The DB connection object is constructed inside the process from plain
     kwargs; nothing holding a live connection is ever pickled across.
+
+    Before doing any DB work the worker waits on the shared barrier so every
+    process has finished spawning. All workers then leave the barrier together
+    and begin connecting/executing at the same moment, removing the staggered
+    interpreter-startup time from the run.
     """
 
     db_factory, db_kwargs, bucket, page_size = payload
     db = db_factory(**db_kwargs)
+
+    # Wait until every worker has spawned and reached this point, then release
+    # together. The slowest process to start is what kicks off the whole run.
+    if _barrier is not None:
+        _barrier.wait()
 
     return db.entry(bucket, page_size)

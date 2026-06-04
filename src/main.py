@@ -3,7 +3,7 @@ import getpass
 import multiprocessing
 import os
 
-from src.functions import build_buckets, resolve_process_count, worker
+from src.functions import build_buckets, init_worker, resolve_process_count, worker
 from src.oracle_db import OracleDB
 from src.postgres_db import PostgresDB
 
@@ -104,10 +104,21 @@ def execute_queries_concurrently(
     payloads = [(db_factory, db_kwargs, bucket, fetch_size) for bucket in buckets]
 
     if len(buckets) == 1:
-        durations = worker(payloads[0])
+        # Single worker: nothing to synchronize, run inline without a barrier.
+        db = db_factory(**db_kwargs)
+        durations = db.entry(buckets[0], fetch_size)
     else:
         ctx = multiprocessing.get_context("spawn")
-        with ctx.Pool(processes=len(buckets)) as pool:
+        # Barrier sized to the worker count. Each worker waits here once it has
+        # spawned and built its DB object, so all processes leave together and
+        # begin connecting/executing at the same moment -- removing the
+        # staggered interpreter-startup time from the measured run.
+        barrier = ctx.Barrier(len(buckets))
+        with ctx.Pool(
+            processes=len(buckets),
+            initializer=init_worker,
+            initargs=(barrier,),
+        ) as pool:
             for result in pool.map(worker, payloads):
                 durations.extend(result)
 
