@@ -74,27 +74,31 @@ class PostgresDB:
                 await conn.close()
 
     async def timer(self, sql_query: str, instance_id: int, fetch_size: int = 0):
-        start_time = time.time()
-        await self.execute_query(sql_query, instance_id, fetch_size)
-        end_time = time.time()
+        try:
+            start_time = time.time()
+            await self.execute_query(sql_query, instance_id, fetch_size)
+            end_time = time.time()
 
-        return end_time - start_time
+            return end_time - start_time
 
-    async def executor(self, sql_query: str | list[str], fetch_size: int = 0):
+        except (asyncpg.PostgresError, OSError) as e:
+            print(f"Instance {instance_id}: Postgres-Error: {e}")
+
+    async def executor(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
         tasks = []
-        if isinstance(sql_query, str):
-            tasks = [self.timer(sql_query, 1, fetch_size)]
-        elif isinstance(sql_query, list):
-            instance = 0
-            for query in sql_query:
-                instance += 1
-                tasks.append(self.timer(query, instance, fetch_size))
-        else:
-            raise Exception("Invalid SQL query type")
+        for instance, (_, sql) in enumerate(bucket, start=1):
+            tasks.append(self.timer(sql, instance, fetch_size))
 
         durations = await asyncio.gather(*tasks)
 
-        return durations
+        # Group durations by file name. A query that errored returns None from
+        # timer; skip those so per-file stats only reflect successful runs.
+        results: dict[str, list[float]] = {}
+        for (file_name, _), duration in zip(bucket, durations):
+            if duration is not None:
+                results.setdefault(file_name, []).append(duration)
 
-    def entry(self, sql_query: str | list[str], fetch_size: int = 0):
-        return asyncio.run(self.executor(sql_query, fetch_size))
+        return results
+
+    def entry(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
+        return asyncio.run(self.executor(bucket, fetch_size))

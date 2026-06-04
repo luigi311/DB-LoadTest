@@ -85,24 +85,21 @@ class OracleDB:
             print(f"Instance {instance_id}: Oracle-Error-Code: {e.args[0].code}")
             print(f"Instance {instance_id}: Oracle-Error-Message: {e.args[0].message}")
 
-    async def executor(self, sql_query: str | list[str], fetch_size: int = 0):
+    async def executor(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
         tasks = []
-
-        if isinstance(sql_query, str):
-            print("Processing 1 query")
-            tasks = [self.timer(sql_query, 1, fetch_size)]
-        elif isinstance(sql_query, list):
-            print(f"Processing {len(sql_query)} queries")
-            instance = 0
-            for query in sql_query:
-                instance += 1
-                tasks.append(self.timer(query, instance, fetch_size))
-        else:
-            raise Exception("Invalid SQL query type")
+        for instance, (_, sql) in enumerate(bucket, start=1):
+            tasks.append(self.timer(sql, instance, fetch_size))
 
         durations = await asyncio.gather(*tasks)
 
-        return durations
+        # Group durations by file name. A query that errored returns None from
+        # timer; skip those so per-file stats only reflect successful runs.
+        results: dict[str, list[float]] = {}
+        for (file_name, _), duration in zip(bucket, durations):
+            if duration is not None:
+                results.setdefault(file_name, []).append(duration)
 
-    def entry(self, sql_query: str | list[str], fetch_size: int = 0):
-        return asyncio.run(self.executor(sql_query, fetch_size))
+        return results
+
+    def entry(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
+        return asyncio.run(self.executor(bucket, fetch_size))

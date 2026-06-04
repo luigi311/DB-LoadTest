@@ -16,21 +16,28 @@ def resolve_process_count(requested: int | None) -> int:
 
 
 def build_buckets(
-    sql_query: str | list[str], instances: int, processes: int
-) -> list[list[str]]:
-    queries = [sql_query] if isinstance(sql_query, str) else sql_query
-
-    buckets: list[list[str]] = [[] for _ in range(processes)]
+    queries: list[tuple[str, str]], instances: int, processes: int
+) -> list[list[tuple[str, str]]]:
+    buckets: list[list[tuple[str, str]]] = [[] for _ in range(processes)]
 
     bucket = 0
-    for sql in queries:
+    for item in queries:
         for _ in range(0, instances):
-            buckets[bucket].append(sql)
+            buckets[bucket].append(item)
             bucket += 1
             if bucket >= processes:
                 bucket = 0
 
     return [b for b in buckets if b]
+
+
+def merge_durations(
+    target: dict[str, list[float]], source: dict[str, list[float]]
+) -> None:
+    """Merge a worker's {file_name: [durations]} dict into the running total."""
+
+    for file_name, durations in source.items():
+        target.setdefault(file_name, []).extend(durations)
 
 
 def init_worker(barrier):
@@ -56,6 +63,8 @@ def worker(payload):
     process has finished spawning. All workers then leave the barrier together
     and begin connecting/executing at the same moment, removing the staggered
     interpreter-startup time from the run.
+
+    Returns {file_name: [durations]} for the queries in this bucket.
     """
 
     db_factory, db_kwargs, bucket, page_size = payload

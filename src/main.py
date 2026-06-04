@@ -3,42 +3,47 @@ import getpass
 import multiprocessing
 import os
 
-from src.functions import build_buckets, init_worker, resolve_process_count, worker
+from src.functions import (
+    build_buckets,
+    init_worker,
+    merge_durations,
+    resolve_process_count,
+    worker,
+)
 from src.oracle_db import OracleDB
 from src.postgres_db import PostgresDB
 
 
-def read_sql_file(file_path: str) -> str:
+def read_sql_file(file_path: str) -> tuple[str, str]:
     """
     Read the SQL query from a file.
 
     :param file_path: Path to the SQL file
-    :return: SQL query as a string
+    :return: (file_name, sql_query) pair; file_name is the basename
     """
 
     with open(file_path, "r") as file:
         sql_query = file.read()
 
-    return sql_query
+    return os.path.basename(file_path), sql_query
 
 
-def read_sql_folder(folder_path: str) -> list[str]:
+def read_sql_folder(folder_path: str) -> list[tuple[str, str]]:
     """
-    Read the SQL query from a folder containing multiple SQL files.
+    Read the SQL queries from a folder containing multiple SQL files.
 
     :param folder_path: Path to the folder containing multiple SQL files
-    :return: List of SQL queries as strings
+    :return: List of (file_name, sql_query) pairs
     """
 
-    sql_queries = []
+    queries = []
 
     for file_name in os.listdir(folder_path):
         if file_name.endswith(".sql"):
             file_path = os.path.join(folder_path, file_name)
-            sql_query = read_sql_file(file_path)
-            sql_queries.append(sql_query)
+            queries.append(read_sql_file(file_path))
 
-    return sql_queries
+    return queries
 
 
 def arguments() -> argparse.Namespace:
@@ -93,20 +98,49 @@ def arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def report(results: dict[str, list[float]]) -> None:
+    """Print per-file stats plus an overall roll-up."""
+
+    if not results:
+        print("No instances completed successfully")
+        return
+
+    all_durations: list[float] = []
+    for file_name in sorted(results):
+        durations = results[file_name]
+        all_durations.extend(durations)
+
+        print(f"\n{file_name}")
+        print(f"  Runs      : {len(durations)}")
+        print(f"  Aggregated: {sum(durations):.2f}s")
+        print(f"  Average   : {sum(durations) / len(durations):.2f}s")
+        print(f"  Minimum   : {min(durations):.2f}s")
+        print(f"  Maximum   : {max(durations):.2f}s")
+
+    print(f"\n{'=' * 40}")
+    print(f"Overall runs      : {len(all_durations)}")
+    print(f"Overall aggregated: {sum(all_durations):.2f}s")
+    print(f"Overall average   : {sum(all_durations) / len(all_durations):.2f}s")
+    print(f"Overall minimum   : {min(all_durations):.2f}s")
+    print(f"Overall maximum   : {max(all_durations):.2f}s")
+    print(f"{'=' * 40}")
+
+
 def execute_queries_concurrently(
     db_factory,
     db_kwargs: dict,
-    buckets: list[list[str]],
+    buckets: list[list[tuple[str, str]]],
     fetch_size: int,
 ):
-    # Get the list of durations for each instance
-    durations = []
     payloads = [(db_factory, db_kwargs, bucket, fetch_size) for bucket in buckets]
+
+    # Accumulate {file_name: [durations]} across all workers.
+    results: dict[str, list[float]] = {}
 
     if len(buckets) == 1:
         # Single worker: nothing to synchronize, run inline without a barrier.
         db = db_factory(**db_kwargs)
-        durations = db.entry(buckets[0], fetch_size)
+        merge_durations(results, db.entry(buckets[0], fetch_size))
     else:
         ctx = multiprocessing.get_context("spawn")
         # Barrier sized to the worker count. Each worker waits here once it has
@@ -120,40 +154,25 @@ def execute_queries_concurrently(
             initargs=(barrier,),
         ) as pool:
             for result in pool.map(worker, payloads):
-                durations.extend(result)
+                merge_durations(results, result)
 
-    print(durations)
-
-    # Remove None values from the list
-    durations = [duration for duration in durations if duration is not None]
-
-    if len(durations) == 0:
-        print("No instances completed successfully")
-        return
-
-    for i, duration in enumerate(durations):
-        print(f"Instance {i + 1}: Execution time: {duration:.2f} seconds")
-
-    print(f"Aggregated execution time: {sum(durations):.2f} seconds")
-    print(f"Average execution time: {sum(durations) / len(durations):.2f} seconds")
-    print(f"Minimum execution time: {min(durations):.2f} seconds")
-    print(f"Maximum execution time: {max(durations):.2f} seconds")
+    report(results)
 
 
 def main():
     args = arguments()
 
-    sql_query: str | list[str] | None = None
+    queries: list[tuple[str, str]] = []
     if args.sql_folder:
-        sql_query = read_sql_folder(args.sql_folder)
+        queries = read_sql_folder(args.sql_folder)
     elif args.sql_file:
-        sql_query = read_sql_file(args.sql_file)
+        queries = [read_sql_file(args.sql_file)]
 
-    if not sql_query:
+    if not queries:
         raise ValueError("SQL query is empty")
 
     processes = resolve_process_count(args.processes)
-    buckets = build_buckets(sql_query, args.instances, processes)
+    buckets = build_buckets(queries, args.instances, processes)
 
     db_factory = PostgresDB if args.database == "postgres" else OracleDB
     db_kwargs = {
