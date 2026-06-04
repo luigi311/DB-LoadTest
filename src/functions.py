@@ -1,41 +1,43 @@
 import os
 
-from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+
+def resolve_process_count(requested: int | None) -> int:
+    """Default to CPU count; always at least 1."""
+
+    cpu = os.cpu_count() or 1
+    procs = requested if requested else cpu
+
+    return max(procs, 1)
 
 
-def future_thread_executor(
-    args: list, threads: Optional[int], override_threads: bool = False
-):
-    futures_list = []
-    results = []
-    workers: int = os.cpu_count() * 2
+def build_buckets(
+    sql_query: str | list[str], instances: int, processes: int
+) -> list[list[str]]:
+    queries = [sql_query] if isinstance(sql_query, str) else sql_query
 
-    if threads:
-        workers = min(threads, workers)
+    buckets: list[list[str]] = [[] for _ in range(processes)]
 
-    if override_threads:
-        workers = threads
+    bucket = 0
+    for sql in queries:
+        for _ in range(0, instances):
+            buckets[bucket].append(sql)
+            bucket += 1
+            if bucket >= processes:
+                bucket = 0
 
-    # If only one worker, run in main thread to avoid overhead
-    if workers == 1:
-        results = []
-        for arg in args:
-            results.append(arg[0](*arg[1:]))
+    return [b for b in buckets if b]
 
-        return results
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        for arg in args:
-            # * arg unpacks the list into actual arguments
-            futures_list.append(executor.submit(*arg))
+def worker(payload):
+    """
+    Top-level worker so it is picklable by multiprocessing.
 
-        for future in futures_list:
-            try:
-                result = future.result()
-                results.append(result)
+    payload = (db_factory, db_kwargs, bucket, fetch_size)
+    The DB connection object is constructed inside the process from plain
+    kwargs; nothing holding a live connection is ever pickled across.
+    """
 
-            except Exception as e:
-                raise Exception(e)
+    db_factory, db_kwargs, bucket, page_size = payload
+    db = db_factory(**db_kwargs)
 
-    return results
+    return db.entry(bucket, page_size)

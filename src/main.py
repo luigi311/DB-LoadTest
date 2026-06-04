@@ -1,7 +1,9 @@
 import argparse
 import getpass
+import multiprocessing
 import os
 
+from src.functions import build_buckets, resolve_process_count, worker
 from src.oracle_db import OracleDB
 from src.postgres_db import PostgresDB
 
@@ -39,32 +41,6 @@ def read_sql_folder(folder_path: str) -> list[str]:
     return sql_queries
 
 
-def execute_queries_concurrently(
-    db: PostgresDB | OracleDB,
-    sql_query: str | list[str],
-    num_instances: int,
-    fetch_size: int,
-):
-    # Get the list of durations for each instance
-    durations = db.entry(sql_query, num_instances, fetch_size)
-    print(durations)
-
-    # Remove None values from the list
-    durations = [duration for duration in durations if duration is not None]
-
-    if len(durations) == 0:
-        print("No instances completed successfully")
-        return
-
-    for i, duration in enumerate(durations):
-        print(f"Instance {i + 1}: Execution time: {duration:.2f} seconds")
-
-    print(f"Aggregated execution time: {sum(durations):.2f} seconds")
-    print(f"Average execution time: {sum(durations) / len(durations):.2f} seconds")
-    print(f"Minimum execution time: {min(durations):.2f} seconds")
-    print(f"Maximum execution time: {max(durations):.2f} seconds")
-
-
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run an SQL query on an Oracle or PostgreSQL database."
@@ -81,7 +57,14 @@ def arguments() -> argparse.Namespace:
         "--instances",
         type=int,
         required=True,
-        help="Number of parallel instances to run",
+        help="Number of parallel instances (copies) to run per query",
+    )
+    parser.add_argument(
+        "--processes",
+        type=int,
+        default=0,
+        help="Number of worker processes to spread the load across "
+        "(default 0 = CPU count)",
     )
     parser.add_argument(
         "--fetch_size",
@@ -104,14 +87,52 @@ def arguments() -> argparse.Namespace:
         "--prefix",
         type=str,
         default="/*DB-LoadTest*/",
-        help="Text to prefix the sql statements with so they can be easily identified in the database",
+        help="Text to prefix the sql statements with so they can be easily "
+        "identified in the database",
     )
     return parser.parse_args()
+
+
+def execute_queries_concurrently(
+    db_factory,
+    db_kwargs: dict,
+    buckets: list[list[str]],
+    fetch_size: int,
+):
+    # Get the list of durations for each instance
+    durations = []
+    payloads = [(db_factory, db_kwargs, bucket, fetch_size) for bucket in buckets]
+
+    if len(buckets) == 1:
+        durations = worker(payloads[0])
+    else:
+        ctx = multiprocessing.get_context("spawn")
+        with ctx.Pool(processes=len(buckets)) as pool:
+            for result in pool.map(worker, payloads):
+                durations.extend(result)
+
+    print(durations)
+
+    # Remove None values from the list
+    durations = [duration for duration in durations if duration is not None]
+
+    if len(durations) == 0:
+        print("No instances completed successfully")
+        return
+
+    for i, duration in enumerate(durations):
+        print(f"Instance {i + 1}: Execution time: {duration:.2f} seconds")
+
+    print(f"Aggregated execution time: {sum(durations):.2f} seconds")
+    print(f"Average execution time: {sum(durations) / len(durations):.2f} seconds")
+    print(f"Minimum execution time: {min(durations):.2f} seconds")
+    print(f"Maximum execution time: {max(durations):.2f} seconds")
 
 
 def main():
     args = arguments()
 
+    sql_query: str | list[str] | None = None
     if args.sql_folder:
         sql_query = read_sql_folder(args.sql_folder)
     elif args.sql_file:
@@ -120,26 +141,19 @@ def main():
     if not sql_query:
         raise ValueError("SQL query is empty")
 
-    if args.database == "postgres":
-        db = PostgresDB(
-            args.dsn,
-            args.user,
-            getpass.getpass(prompt="Enter password: "),
-            args.print,
-            args.prefix,
-        )
-    elif args.database == "oracle":
-        db = OracleDB(
-            args.dsn,
-            args.user,
-            getpass.getpass(prompt="Enter password: "),
-            args.print,
-            args.prefix,
-        )
-    else:
-        raise ValueError(f"Unsupported database type: {args.database}")
+    processes = resolve_process_count(args.processes)
+    buckets = build_buckets(sql_query, args.instances, processes)
 
-    execute_queries_concurrently(db, sql_query, args.instances, args.fetch_size)
+    db_factory = PostgresDB if args.database == "postgres" else OracleDB
+    db_kwargs = {
+        "dsn": args.dsn,
+        "user": args.user,
+        "password": getpass.getpass(prompt="Enter password: "),
+        "printing": args.print,
+        "prefix": args.prefix,
+    }
+
+    execute_queries_concurrently(db_factory, db_kwargs, buckets, args.fetch_size)
 
 
 if __name__ == "__main__":

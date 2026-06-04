@@ -80,20 +80,15 @@ class PostgresDB:
 
         return end_time - start_time
 
-    async def executor(
-        self, sql_query: str | list[str], num_instances: int, fetch_size: int = 0
-    ):
+    async def executor(self, sql_query: str | list[str], fetch_size: int = 0):
         tasks = []
         if isinstance(sql_query, str):
-            tasks = [
-                self.timer(sql_query, i + 1, fetch_size) for i in range(num_instances)
-            ]
+            tasks = [self.timer(sql_query, 1, fetch_size)]
         elif isinstance(sql_query, list):
             instance = 0
-            for _ in range(num_instances):
-                for query in sql_query:
-                    instance += 1
-                    tasks.append(self.timer(query, instance, fetch_size))
+            for query in sql_query:
+                instance += 1
+                tasks.append(self.timer(query, instance, fetch_size))
         else:
             raise Exception("Invalid SQL query type")
 
@@ -101,7 +96,5 @@ class PostgresDB:
 
         return durations
 
-    def entry(
-        self, sql_query: str | list[str], num_instances: int, fetch_size: int = 0
-    ):
-        return asyncio.run(self.executor(sql_query, num_instances, fetch_size))
+    def entry(self, sql_query: str | list[str], fetch_size: int = 0):
+        return asyncio.run(self.executor(sql_query, fetch_size))
