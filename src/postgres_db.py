@@ -75,9 +75,9 @@ class PostgresDB:
 
     async def timer(self, sql_query: str, instance_id: int, fetch_size: int = 0):
         try:
-            start_time = time.time()
+            start_time = time.monotonic()
             await self.execute_query(sql_query, instance_id, fetch_size)
-            end_time = time.time()
+            end_time = time.monotonic()
 
             return end_time - start_time
 
