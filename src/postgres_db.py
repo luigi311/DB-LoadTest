@@ -1,24 +1,31 @@
 import asyncio
-import asyncpg
 import time
 
-from typing import Union
-
+import asyncpg
 
 max_fetch_size: int = 100_000_000
 
 
 class PostgresDB:
-    def __init__(self, dsn: str, user: str, password: str, printing: bool = False):
+    def __init__(
+        self,
+        dsn: str,
+        user: str,
+        password: str,
+        printing: bool = False,
+        prefix: str = "",
+    ):
         self.dsn: str = dsn
         self.user: str = user
         self.password: str = password
         self.printing: bool = printing
+        self.prefix: str = prefix
 
     async def execute_query(
         self, sql_query: str, instance_id: int, fetch_size: int = 0
     ):
         conn = None
+        sql_query = f"{self.prefix}\n{sql_query}"
 
         try:
             conn = await asyncpg.connect(
@@ -37,7 +44,6 @@ class PostgresDB:
 
                 rows_fetched = 0
                 while True:
-                    
                     if fetch_size > 0:
                         rows = await cur.fetch(fetch_size)
 
@@ -75,7 +81,7 @@ class PostgresDB:
         return end_time - start_time
 
     async def executor(
-        self, sql_query: Union[str, list[str]], num_instances: int, fetch_size: int = 0
+        self, sql_query: str | list[str], num_instances: int, fetch_size: int = 0
     ):
         tasks = []
         if isinstance(sql_query, str):
@@ -96,6 +102,6 @@ class PostgresDB:
         return durations
 
     def entry(
-        self, sql_query: Union[str, list[str]], num_instances: int, fetch_size: int = 0
+        self, sql_query: str | list[str], num_instances: int, fetch_size: int = 0
     ):
         return asyncio.run(self.executor(sql_query, num_instances, fetch_size))

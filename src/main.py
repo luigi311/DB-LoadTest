@@ -2,10 +2,8 @@ import argparse
 import getpass
 import os
 
-from typing import Union
-
-from src.postgres_db import PostgresDB
 from src.oracle_db import OracleDB
+from src.postgres_db import PostgresDB
 
 
 def read_sql_file(file_path: str) -> str:
@@ -42,8 +40,8 @@ def read_sql_folder(folder_path: str) -> list[str]:
 
 
 def execute_queries_concurrently(
-    db: Union[PostgresDB, OracleDB],
-    sql_query: Union[str, list[str]],
+    db: PostgresDB | OracleDB,
+    sql_query: str | list[str],
     num_instances: int,
     fetch_size: int,
 ):
@@ -102,6 +100,12 @@ def arguments() -> argparse.Namespace:
         action="store_true",
         help="Print the results of the SQL query (default False)",
     )
+    parser.add_argument(
+        "--prefix",
+        type=str,
+        default="/*DB-LoadTest*/",
+        help="Text to prefix the sql statements with so they can be easily identified in the database",
+    )
     return parser.parse_args()
 
 
@@ -117,9 +121,21 @@ def main():
         raise ValueError("SQL query is empty")
 
     if args.database == "postgres":
-        db = PostgresDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "), args.print)
+        db = PostgresDB(
+            args.dsn,
+            args.user,
+            getpass.getpass(prompt="Enter password: "),
+            args.print,
+            args.prefix,
+        )
     elif args.database == "oracle":
-        db = OracleDB(args.dsn, args.user, getpass.getpass(prompt="Enter password: "), args.print)
+        db = OracleDB(
+            args.dsn,
+            args.user,
+            getpass.getpass(prompt="Enter password: "),
+            args.print,
+            args.prefix,
+        )
     else:
         raise ValueError(f"Unsupported database type: {args.database}")
 
