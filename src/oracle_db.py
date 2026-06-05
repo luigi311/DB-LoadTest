@@ -119,5 +119,5 @@ class OracleDB:
 
         return results
 
-    def entry(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
-        return asyncio.run(self.executor(bucket, fetch_size))
+    def entry(self, bucket: list[tuple[str, str]]):
+        return asyncio.run(self.executor(bucket))
