@@ -18,14 +18,16 @@ class PostgresDB:
         password: str,
         printing: bool = False,
         prefix: str = "",
+        fetch_size: int = 0,
     ):
         self.dsn: str = dsn
         self.user: str = user
         self.password: str = password
         self.printing: bool = printing
         self.prefix: str = prefix
+        self.fetch_size: int = fetch_size
 
-    async def execute_query(self, sql_query: str, file_name: str, fetch_size: int = 0):
+    async def execute_query(self, sql_query: str, file_name: str):
         conn = None
         sql_query = f"{self.prefix}\n{sql_query}"
 
@@ -45,10 +47,10 @@ class PostgresDB:
                 rows_fetched = 0
                 batches = 0
                 while True:
-                    if fetch_size > 0:
-                        rows = await cur.fetch(fetch_size)
+                    if self.fetch_size > 0:
+                        rows = await cur.fetch(self.fetch_size)
 
-                    elif fetch_size == -1:
+                    elif self.fetch_size == -1:
                         rows = await cur.fetch(max_fetch_size)
 
                     else:
@@ -67,7 +69,7 @@ class PostgresDB:
                     # Heartbeat so a long-running fetch is visibly still making
                     # progress (vs genuinely stuck). Only meaningful for the
                     # batched fetch_size > 0 path.
-                    if fetch_size > 0 and batches % progress_every == 0:
+                    if self.fetch_size > 0 and batches % progress_every == 0:
                         now = datetime.now().strftime("%H:%M:%S")
                         print(
                             f"[{now}] {file_name}: still fetching... "
@@ -86,10 +88,10 @@ class PostgresDB:
             if conn:
                 await conn.close()
 
-    async def timer(self, sql_query: str, file_name: str, fetch_size: int = 0):
+    async def timer(self, sql_query: str, file_name: str):
         try:
             start_time = time.time()
-            await self.execute_query(sql_query, file_name, fetch_size)
+            await self.execute_query(sql_query, file_name)
             end_time = time.time()
 
             return end_time - start_time
@@ -97,10 +99,10 @@ class PostgresDB:
         except (asyncpg.PostgresError, OSError) as e:
             print(f"{file_name}: Postgres-Error: {e}")
 
-    async def executor(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
+    async def executor(self, bucket: list[tuple[str, str]]):
         tasks = []
         for file_name, sql in bucket:
-            tasks.append(self.timer(sql, file_name, fetch_size))
+            tasks.append(self.timer(sql, file_name))
 
         durations = await asyncio.gather(*tasks)
 
@@ -113,5 +115,5 @@ class PostgresDB:
 
         return results
 
-    def entry(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
-        return asyncio.run(self.executor(bucket, fetch_size))
+    def entry(self, bucket: list[tuple[str, str]]):
+        return asyncio.run(self.executor(bucket))

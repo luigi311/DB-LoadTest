@@ -55,7 +55,7 @@ def worker(payload):
     """
     Top-level worker so it is picklable by multiprocessing.
 
-    payload = (db_factory, db_kwargs, bucket, fetch_size)
+    payload = (db_factory, db_kwargs, bucket)
     The DB connection object is constructed inside the process from plain
     kwargs; nothing holding a live connection is ever pickled across.
 
@@ -67,7 +67,7 @@ def worker(payload):
     Returns {file_name: [durations]} for the queries in this bucket.
     """
 
-    db_factory, db_kwargs, bucket, page_size = payload
+    db_factory, db_kwargs, bucket = payload
     db = db_factory(**db_kwargs)
 
     # Wait until every worker has spawned and reached this point, then release
@@ -75,4 +75,4 @@ def worker(payload):
     if _barrier is not None:
         _barrier.wait()
 
-    return db.entry(bucket, page_size)
+    return db.entry(bucket)

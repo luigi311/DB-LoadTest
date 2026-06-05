@@ -17,14 +17,16 @@ class OracleDB:
         password: str,
         printing: bool = False,
         prefix: str = "",
+        fetch_size: int = 0,
     ):
         self.dsn: str = dsn
         self.user: str = user
         self.password: str = password
         self.printing: bool = printing
         self.prefix: str = prefix
+        self.fetch_size: int = fetch_size
 
-    async def execute_query(self, sql_query: str, file_name: str, fetch_size: int = 0):
+    async def execute_query(self, sql_query: str, file_name: str):
         connection = None
         sql_query = f"{self.prefix}\n{sql_query}"
 
@@ -39,15 +41,17 @@ class OracleDB:
                 print(f"{file_name}: Connected")
 
             with connection.cursor(scrollable=True) as cursor:
-                if fetch_size != 0:
-                    cursor.arraysize = fetch_size if fetch_size > 0 else max_fetch_size
+                if self.fetch_size != 0:
+                    cursor.arraysize = (
+                        self.fetch_size if self.fetch_size > 0 else max_fetch_size
+                    )
                 await cursor.execute(sql_query)
 
                 rows_fetched = 0
-                if fetch_size > 0:
+                if self.fetch_size > 0:
                     batches = 0
                     while True:
-                        rows = await cursor.fetchmany(fetch_size)
+                        rows = await cursor.fetchmany(self.fetch_size)
 
                         if not rows:
                             break
@@ -68,7 +72,7 @@ class OracleDB:
                             for row in rows:
                                 print(row)
 
-                elif fetch_size == -1:
+                elif self.fetch_size == -1:
                     rows = await cursor.fetchall()
 
                     rows_fetched = len(rows)
@@ -87,10 +91,10 @@ class OracleDB:
             if connection:
                 await connection.close()
 
-    async def timer(self, sql_query: str, file_name: str, fetch_size: int = 0):
+    async def timer(self, sql_query: str, file_name: str):
         try:
             start_time = time.time()
-            await self.execute_query(sql_query, file_name, fetch_size)
+            await self.execute_query(sql_query, file_name)
             end_time = time.time()
 
             return end_time - start_time
@@ -99,10 +103,10 @@ class OracleDB:
             print(f"{file_name}: Oracle-Error-Code: {e.args[0].code}")
             print(f"{file_name}: Oracle-Error-Message: {e.args[0].message}")
 
-    async def executor(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
+    async def executor(self, bucket: list[tuple[str, str]]):
         tasks = []
         for file_name, sql in bucket:
-            tasks.append(self.timer(sql, file_name, fetch_size))
+            tasks.append(self.timer(sql, file_name))
 
         durations = await asyncio.gather(*tasks)
 

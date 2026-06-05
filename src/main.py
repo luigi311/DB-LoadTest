@@ -136,9 +136,8 @@ def execute_queries_concurrently(
     db_factory,
     db_kwargs: dict,
     buckets: list[list[tuple[str, str]]],
-    fetch_size: int,
 ):
-    payloads = [(db_factory, db_kwargs, bucket, fetch_size) for bucket in buckets]
+    payloads = [(db_factory, db_kwargs, bucket) for bucket in buckets]
 
     # Accumulate {file_name: [durations]} across all workers.
     results: dict[str, list[float]] = {}
@@ -146,7 +145,7 @@ def execute_queries_concurrently(
     if len(buckets) == 1:
         # Single worker: nothing to synchronize, run inline without a barrier.
         db = db_factory(**db_kwargs)
-        merge_durations(results, db.entry(buckets[0], fetch_size))
+        merge_durations(results, db.entry(buckets[0]))
     else:
         ctx = multiprocessing.get_context("spawn")
         # Barrier sized to the worker count. Each worker waits here once it has
@@ -193,6 +192,7 @@ def main():
             "access_token": getpass.getpass(prompt="Enter access token: "),
             "printing": args.print,
             "prefix": args.prefix,
+            "fetch_size": args.fetch_size,
         }
     else:
         if not args.dsn or not args.user:
@@ -204,10 +204,11 @@ def main():
             "password": getpass.getpass(prompt="Enter password: "),
             "printing": args.print,
             "prefix": args.prefix,
+            "fetch_size": args.fetch_size,
         }
 
     start_time = time.monotonic()
-    execute_queries_concurrently(db_factory, db_kwargs, buckets, args.fetch_size)
+    execute_queries_concurrently(db_factory, db_kwargs, buckets)
     end_time = time.monotonic()
 
     total_time = end_time - start_time

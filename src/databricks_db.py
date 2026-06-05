@@ -16,14 +16,16 @@ class DatabricksDB:
         access_token: str,
         printing: bool = False,
         prefix: str = "",
+        fetch_size: int = 0,
     ):
         self.server_hostname: str = server_hostname
         self.http_path: str = http_path
         self.access_token: str = access_token
         self.printing: bool = printing
         self.prefix: str = prefix
+        self.fetch_size: int = fetch_size
 
-    def execute_query(self, sql_query: str, file_name: str, fetch_size: int = 0):
+    def execute_query(self, sql_query: str, file_name: str):
         connection = None
         sql_query = f"{self.prefix}\n{sql_query}"
 
@@ -43,10 +45,10 @@ class DatabricksDB:
                 cursor.execute(sql_query)
 
                 rows_fetched = 0
-                if fetch_size > 0:
+                if self.fetch_size > 0:
                     batches = 0
                     while True:
-                        rows = cursor.fetchmany(fetch_size)
+                        rows = cursor.fetchmany(self.fetch_size)
 
                         if not rows:
                             break
@@ -67,7 +69,7 @@ class DatabricksDB:
                             for row in rows:
                                 print(row)
 
-                elif fetch_size == -1:
+                elif self.fetch_size == -1:
                     rows = cursor.fetchall()
 
                     rows_fetched = len(rows)
@@ -88,10 +90,10 @@ class DatabricksDB:
             if connection:
                 connection.close()
 
-    def timer(self, sql_query: str, file_name: str, fetch_size: int = 0):
+    def timer(self, sql_query: str, file_name: str):
         try:
             start_time = time.monotonic()
-            self.execute_query(sql_query, file_name, fetch_size)
+            self.execute_query(sql_query, file_name)
             end_time = time.monotonic()
 
             return end_time - start_time
@@ -100,14 +102,14 @@ class DatabricksDB:
             print(f"{file_name}: Databricks-Error: {e}")
             return None
 
-    def executor(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
+    def executor(self, bucket: list[tuple[str, str]]):
         # One thread per query in the bucket so they all fire in parallel. The
         # threads spend almost all their time blocked on the network/server, so
         # the GIL is not the bottleneck here.
         results: dict[str, list[float]] = {}
         with ThreadPoolExecutor(max_workers=len(bucket)) as pool:
             future_to_file = {
-                pool.submit(self.timer, sql, file_name, fetch_size): file_name
+                pool.submit(self.timer, sql, file_name): file_name
                 for file_name, sql in bucket
             }
 
@@ -119,5 +121,5 @@ class DatabricksDB:
 
         return results
 
-    def entry(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
-        return self.executor(bucket, fetch_size)
+    def entry(self, bucket: list[tuple[str, str]]):
+        return self.executor(bucket)
