@@ -2,6 +2,7 @@ import argparse
 import getpass
 import multiprocessing
 import os
+import time
 
 from src.functions import (
     build_buckets,
@@ -183,7 +184,12 @@ def main():
         "prefix": args.prefix,
     }
 
+    start_time = time.monotonic()
     execute_queries_concurrently(db_factory, db_kwargs, buckets, args.fetch_size)
+    end_time = time.monotonic()
+
+    total_time = end_time - start_time
+    print(f"Walltime          : {total_time:.2f}s")
 
 
 if __name__ == "__main__":
