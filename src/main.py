@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import time
 
+from src.databricks_db import DatabricksDB
 from src.functions import (
     build_buckets,
     init_worker,
@@ -52,9 +53,13 @@ def arguments() -> argparse.Namespace:
         description="Run an SQL query on an Oracle or PostgreSQL database."
     )
     parser.add_argument(
-        "--dsn", required=True, help="Data Source Name (DSN) for the database"
+        "--dsn", help="Data Source Name (DSN) for the database (postgres/oracle)"
     )
-    parser.add_argument("--user", required=True, help="Username for the database")
+    parser.add_argument("--user", help="Username for the database (postgres/oracle)")
+    parser.add_argument("--server_hostname", help="Databricks server hostname")
+    parser.add_argument(
+        "--http_path", help="Databricks HTTP path (SQL warehouse or cluster)"
+    )
     parser.add_argument("--sql_file", help="Path to the SQL file")
     parser.add_argument(
         "--sql_folder", help="Path to the folder containing multiple SQL files"
@@ -81,7 +86,7 @@ def arguments() -> argparse.Namespace:
     parser.add_argument(
         "--database",
         default="postgres",
-        choices=["postgres", "oracle"],
+        choices=["postgres", "oracle", "databricks"],
         help="Database type (default postgres)",
     )
     parser.add_argument(
@@ -175,14 +180,31 @@ def main():
     processes = resolve_process_count(args.processes)
     buckets = build_buckets(queries, args.instances, processes)
 
-    db_factory = PostgresDB if args.database == "postgres" else OracleDB
-    db_kwargs = {
-        "dsn": args.dsn,
-        "user": args.user,
-        "password": getpass.getpass(prompt="Enter password: "),
-        "printing": args.print,
-        "prefix": args.prefix,
-    }
+    if args.database == "databricks":
+        if not args.server_hostname or not args.http_path:
+            raise ValueError("Databricks requires --server_hostname and --http_path")
+        if args.fetch_size == 0:
+            raise ValueError("Databricks does not support fetch_size 0")
+
+        db_factory = DatabricksDB
+        db_kwargs = {
+            "server_hostname": args.server_hostname,
+            "http_path": args.http_path,
+            "access_token": getpass.getpass(prompt="Enter access token: "),
+            "printing": args.print,
+            "prefix": args.prefix,
+        }
+    else:
+        if not args.dsn or not args.user:
+            raise ValueError(f"{args.database} requires --dsn and --user")
+        db_factory = PostgresDB if args.database == "postgres" else OracleDB
+        db_kwargs = {
+            "dsn": args.dsn,
+            "user": args.user,
+            "password": getpass.getpass(prompt="Enter password: "),
+            "printing": args.print,
+            "prefix": args.prefix,
+        }
 
     start_time = time.monotonic()
     execute_queries_concurrently(db_factory, db_kwargs, buckets, args.fetch_size)
