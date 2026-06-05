@@ -6,6 +6,7 @@ import oracledb
 
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
 progress_every: int = 5
+max_fetch_size: int = 100_000_000
 
 
 class OracleDB:
@@ -38,6 +39,8 @@ class OracleDB:
                 print(f"{file_name}: Connected")
 
             with connection.cursor(scrollable=True) as cursor:
+                if fetch_size != 0:
+                    cursor.arraysize = fetch_size if fetch_size > 0 else max_fetch_size
                 await cursor.execute(sql_query)
 
                 rows_fetched = 0
