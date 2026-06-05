@@ -21,9 +21,7 @@ class PostgresDB:
         self.printing: bool = printing
         self.prefix: str = prefix
 
-    async def execute_query(
-        self, sql_query: str, instance_id: int, fetch_size: int = 0
-    ):
+    async def execute_query(self, sql_query: str, file_name: str, fetch_size: int = 0):
         conn = None
         sql_query = f"{self.prefix}\n{sql_query}"
 
@@ -33,11 +31,9 @@ class PostgresDB:
             )
 
             if not conn:
-                raise Exception(
-                    f"Instance {instance_id}: Could not connect to the database"
-                )
+                raise Exception(f"{file_name}: Could not connect to the database")
             else:
-                print(f"Instance {instance_id}: Connected")
+                print(f"{file_name}: Connected")
 
             async with conn.transaction():
                 cur = await conn.cursor(sql_query)
@@ -67,27 +63,27 @@ class PostgresDB:
                                 print(row)
 
                 if rows_fetched > 0:
-                    print(f"Instance {instance_id}: {rows_fetched} rows")
+                    print(f"{file_name}: {rows_fetched} rows")
 
         finally:
             if conn:
                 await conn.close()
 
-    async def timer(self, sql_query: str, instance_id: int, fetch_size: int = 0):
+    async def timer(self, sql_query: str, file_name: str, fetch_size: int = 0):
         try:
-            start_time = time.monotonic()
-            await self.execute_query(sql_query, instance_id, fetch_size)
-            end_time = time.monotonic()
+            start_time = time.time()
+            await self.execute_query(sql_query, file_name, fetch_size)
+            end_time = time.time()
 
             return end_time - start_time
 
         except (asyncpg.PostgresError, OSError) as e:
-            print(f"Instance {instance_id}: Postgres-Error: {e}")
+            print(f"{file_name}: Postgres-Error: {e}")
 
     async def executor(self, bucket: list[tuple[str, str]], fetch_size: int = 0):
         tasks = []
-        for instance, (_, sql) in enumerate(bucket, start=1):
-            tasks.append(self.timer(sql, instance, fetch_size))
+        for file_name, sql in bucket:
+            tasks.append(self.timer(sql, file_name, fetch_size))
 
         durations = await asyncio.gather(*tasks)
 
