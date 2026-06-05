@@ -1,7 +1,11 @@
 import asyncio
 import time
+from datetime import datetime
 
 import oracledb
+
+# Print a progress heartbeat every N fetched batches when fetch_size > 0.
+progress_every: int = 5
 
 
 class OracleDB:
@@ -38,6 +42,7 @@ class OracleDB:
 
                 rows_fetched = 0
                 if fetch_size > 0:
+                    batches = 0
                     while True:
                         rows = await cursor.fetchmany(fetch_size)
 
@@ -45,6 +50,16 @@ class OracleDB:
                             break
 
                         rows_fetched += len(rows)
+                        batches += 1
+
+                        # Heartbeat so a long-running fetch is visibly still
+                        # making progress (vs genuinely stuck).
+                        if batches % progress_every == 0:
+                            now = datetime.now().strftime("%H:%M:%S")
+                            print(
+                                f"[{now}] {file_name}: still fetching... "
+                                f"{rows_fetched} rows so far"
+                            )
 
                         if self.printing:
                             for row in rows:

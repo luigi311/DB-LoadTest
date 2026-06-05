@@ -1,9 +1,13 @@
 import asyncio
 import time
+from datetime import datetime
 
 import asyncpg
 
 max_fetch_size: int = 100_000_000
+
+# Print a progress heartbeat every N fetched batches when fetch_size > 0.
+progress_every: int = 5
 
 
 class PostgresDB:
@@ -39,6 +43,7 @@ class PostgresDB:
                 cur = await conn.cursor(sql_query)
 
                 rows_fetched = 0
+                batches = 0
                 while True:
                     if fetch_size > 0:
                         rows = await cur.fetch(fetch_size)
@@ -56,6 +61,18 @@ class PostgresDB:
 
                     if not rows:
                         break
+
+                    batches += 1
+
+                    # Heartbeat so a long-running fetch is visibly still making
+                    # progress (vs genuinely stuck). Only meaningful for the
+                    # batched fetch_size > 0 path.
+                    if fetch_size > 0 and batches % progress_every == 0:
+                        now = datetime.now().strftime("%H:%M:%S")
+                        print(
+                            f"[{now}] {file_name}: still fetching... "
+                            f"{rows_fetched} rows so far"
+                        )
 
                     if self.printing:
                         if isinstance(rows, list):
