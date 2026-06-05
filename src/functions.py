@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 # Set once per worker process by `init_worker` via the Pool initializer.
 # A multiprocessing.Barrier cannot be passed as a pickled map() argument under
@@ -13,6 +14,61 @@ def resolve_process_count(requested: int | None) -> int:
     procs = requested if requested else cpu
 
     return max(procs, 1)
+
+
+def future_thread_executor(
+    args: list, threads: int | None = None, override_threads: bool = False
+):
+    """
+    Run a list of callables concurrently on a thread pool and return their
+    results in submission order.
+
+    Each element of `args` is a list whose first item is the callable and whose
+    remaining items are its positional arguments: [fn, arg1, arg2, ...].
+
+    threads / override_threads control the worker count:
+      - default: min(threads, cpu_count * 2), or cpu_count * 2 if threads is None
+      - override_threads: use exactly `threads` workers (e.g. one per task)
+
+    Used by the blocking-driver path (Databricks): the connector has no async
+    API, so concurrency within a process comes from threads here rather than
+    asyncio.gather. Threads spend their time blocked on the network/server, so
+    the GIL is not the bottleneck.
+    """
+
+    futures_list = []
+    results = []
+    workers: int = (os.cpu_count() or 1) * 2
+
+    if threads:
+        workers = min(threads, workers)
+
+    if override_threads and threads:
+        workers = threads
+
+    # If only one worker, run in the calling thread to avoid pool overhead.
+    if workers == 1:
+        for arg in args:
+            results.append(arg[0](*arg[1:]))
+
+        return results
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for arg in args:
+            # * unpacks [fn, arg1, ...] into executor.submit(fn, arg1, ...)
+            futures_list.append(executor.submit(*arg))
+
+        # Collect in submission order. A task that raises is logged and recorded
+        # as None rather than aborting the whole batch, so one failed query does
+        # not lose the results of its bucket-mates.
+        for future in futures_list:
+            try:
+                results.append(future.result())
+            except Exception as e:
+                print(f"Thread task error: {e}")
+                results.append(None)
+
+    return results
 
 
 def build_buckets(

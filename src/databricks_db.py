@@ -1,11 +1,11 @@
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from databricks import sql
+from src.functions import future_thread_executor
 
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
-progress_every: int = 10
+progress_every: int = 5
 
 
 class DatabricksDB:
@@ -96,28 +96,30 @@ class DatabricksDB:
             self.execute_query(sql_query, file_name)
             end_time = time.monotonic()
 
-            return end_time - start_time
+            return file_name, end_time - start_time
 
         except Exception as e:
             print(f"{file_name}: Databricks-Error: {e}")
-            return None
+            return file_name, None
 
     def executor(self, bucket: list[tuple[str, str]]):
-        # One thread per query in the bucket so they all fire in parallel. The
-        # threads spend almost all their time blocked on the network/server, so
-        # the GIL is not the bottleneck here.
-        results: dict[str, list[float]] = {}
-        with ThreadPoolExecutor(max_workers=len(bucket)) as pool:
-            future_to_file = {
-                pool.submit(self.timer, sql, file_name): file_name
-                for file_name, sql in bucket
-            }
+        # One thread per query in the bucket (override_threads) so they all fire
+        # in parallel. Each arg is [callable, *positional_args] for the executor.
+        args = [[self.timer, sql, file_name] for file_name, sql in bucket]
 
-            for future in as_completed(future_to_file):
-                file_name = future_to_file[future]
-                duration = future.result()
-                if duration is not None:
-                    results.setdefault(file_name, []).append(duration)
+        thread_results = future_thread_executor(
+            args, threads=len(bucket), override_threads=True
+        )
+
+        # Each result is (file_name, duration|None). Group successful runs by
+        # file name; drop None (errored or thread-level failure).
+        results: dict[str, list[float]] = {}
+        for item in thread_results:
+            if item is None:
+                continue
+            file_name, duration = item
+            if duration is not None:
+                results.setdefault(file_name, []).append(duration)
 
         return results
 
