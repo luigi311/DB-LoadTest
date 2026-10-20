@@ -27,22 +27,39 @@ class PostgresDB:
         self.prefix: str = prefix
         self.fetch_size: int = fetch_size
 
+    def test_connection(self) -> bool:
+        async def test():
+            connection = await asyncpg.connect(
+                dsn=self.dsn, user=self.user, password=self.password
+            )
+            try:
+                return connection is not None
+            finally:
+                if connection is not None:
+                    await connection.close()
+
+        try:
+            return asyncio.run(test())
+        except Exception as e:
+            print(f"Connection to database failed: {e}")
+            return False
+
     async def execute_query(self, sql_query: str, file_name: str):
-        conn = None
+        connection = None
         sql_query = f"{self.prefix}\n{sql_query}"
 
         try:
-            conn = await asyncpg.connect(
+            connection = await asyncpg.connect(
                 dsn=self.dsn, user=self.user, password=self.password
             )
 
-            if not conn:
+            if not connection:
                 raise Exception(f"{file_name}: Could not connect to the database")
             else:
                 print(f"{file_name}: Connected")
 
-            async with conn.transaction():
-                cur = await conn.cursor(sql_query)
+            async with connection.transaction():
+                cur = await connection.cursor(sql_query)
 
                 rows_fetched = 0
                 batches = 0
@@ -85,8 +102,8 @@ class PostgresDB:
                     print(f"{file_name}: {rows_fetched} rows")
 
         finally:
-            if conn:
-                await conn.close()
+            if connection:
+                await connection.close()
 
     async def timer(self, sql_query: str, file_name: str):
         try:

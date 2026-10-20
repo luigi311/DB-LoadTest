@@ -25,6 +25,20 @@ class DatabricksDB:
         self.prefix: str = prefix
         self.fetch_size: int = fetch_size
 
+    def test_connection(self) -> bool:
+        try:
+            with sql.connect(
+                server_hostname=self.server_hostname,
+                http_path=self.http_path,
+                access_token=self.access_token,
+            ):
+                pass
+        except Exception as e:
+            print(f"Connection to database failed: {e}")
+            return False
+
+        return True
+
     def execute_query(self, sql_query: str, file_name: str):
         connection = None
         sql_query = f"{self.prefix}\n{sql_query}"

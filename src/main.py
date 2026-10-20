@@ -176,9 +176,6 @@ def main():
     if not queries:
         raise ValueError("SQL query is empty")
 
-    processes = resolve_process_count(args.processes)
-    buckets = build_buckets(queries, args.instances, processes)
-
     if args.database == "databricks":
         if not args.server_hostname or not args.http_path:
             raise ValueError("Databricks requires --server_hostname and --http_path")
@@ -206,6 +203,16 @@ def main():
             "prefix": args.prefix,
             "fetch_size": args.fetch_size,
         }
+
+    print("Testing database connection...")
+    db = db_factory(**db_kwargs)
+    if not db.test_connection():
+        print("Connection test failed; no query instances were started.")
+        raise SystemExit(1)
+    print("Connection test succeeded.")
+
+    processes = resolve_process_count(args.processes)
+    buckets = build_buckets(queries, args.instances, processes)
 
     start_time = time.monotonic()
     execute_queries_concurrently(db_factory, db_kwargs, buckets)
