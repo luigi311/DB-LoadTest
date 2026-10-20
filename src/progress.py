@@ -1,7 +1,10 @@
 from contextlib import contextmanager
+from queue import Empty
 from threading import Thread
 
 from tqdm import tqdm
+
+PROGRESS_REFRESH_INTERVAL_SECONDS = 1
 
 # Workers receive the queue through the multiprocessing pool initializer.
 # Only the parent process renders the progress bar and query output.
@@ -43,7 +46,13 @@ def track_queries(total, progress_queue):
 
             def consume():
                 while True:
-                    event = progress_queue.get()
+                    try:
+                        event = progress_queue.get(
+                            timeout=PROGRESS_REFRESH_INTERVAL_SECONDS
+                        )
+                    except Empty:
+                        progress.refresh()
+                        continue
                     if event is None:
                         return
                     kind, message = event

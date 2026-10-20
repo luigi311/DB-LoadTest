@@ -40,7 +40,8 @@ python main.py --dsn <DSN> --user <USERNAME> --sql_file <SQL_FILE_PATH> --instan
 The `Queries` progress bar shows completed instances out of the total and a
 `remaining` query count. The total includes every
 SQL file multiplied by `--instances`, across all worker processes. Both successful
-and failed instances advance the bar when they finish.
+and failed instances advance the bar when they finish. While waiting for updates,
+the bar refreshes every second.
 
 ### Arguments
 
