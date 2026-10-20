@@ -4,6 +4,8 @@ from datetime import datetime
 
 import oracledb
 
+from src.progress import query_finished, write
+
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
 progress_every: int = 5
 max_fetch_size: int = 100_000_000
@@ -40,7 +42,7 @@ class OracleDB:
         try:
             return asyncio.run(test())
         except Exception as e:
-            print(f"Connection to database failed: {e}")
+            write(f"Connection to database failed: {e}")
             return False
 
     async def execute_query(self, sql_query: str, file_name: str):
@@ -55,7 +57,7 @@ class OracleDB:
             if not connection:
                 raise Exception(f"{file_name}: Could not connect to the database")
             else:
-                print(f"{file_name}: Connected")
+                write(f"{file_name}: Connected")
 
             with connection.cursor(scrollable=True) as cursor:
                 if self.fetch_size != 0:
@@ -80,14 +82,14 @@ class OracleDB:
                         # making progress (vs genuinely stuck).
                         if batches % progress_every == 0:
                             now = datetime.now().strftime("%H:%M:%S")
-                            print(
+                            write(
                                 f"[{now}] {file_name}: still fetching... "
                                 f"{rows_fetched} rows so far"
                             )
 
                         if self.printing:
                             for row in rows:
-                                print(row)
+                                write(row)
 
                 elif self.fetch_size == -1:
                     rows = await cursor.fetchall()
@@ -96,13 +98,13 @@ class OracleDB:
 
                     if self.printing:
                         for row in rows:
-                            print(row)
+                            write(row)
 
                 else:
                     await cursor.scroll(mode="last")
 
                 if rows_fetched > 0:
-                    print(f"{file_name}: Rows fetched: {rows_fetched}")
+                    write(f"{file_name}: Rows fetched: {rows_fetched}")
 
         finally:
             if connection:
@@ -117,8 +119,10 @@ class OracleDB:
             return end_time - start_time
 
         except oracledb.DatabaseError as e:
-            print(f"{file_name}: Oracle-Error-Code: {e.args[0].code}")
-            print(f"{file_name}: Oracle-Error-Message: {e.args[0].message}")
+            write(f"{file_name}: Oracle-Error-Code: {e.args[0].code}")
+            write(f"{file_name}: Oracle-Error-Message: {e.args[0].message}")
+        finally:
+            query_finished()
 
     async def executor(self, bucket: list[tuple[str, str]]):
         tasks = []

@@ -4,6 +4,8 @@ from datetime import datetime
 
 import asyncpg
 
+from src.progress import query_finished, write
+
 max_fetch_size: int = 100_000_000
 
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
@@ -41,7 +43,7 @@ class PostgresDB:
         try:
             return asyncio.run(test())
         except Exception as e:
-            print(f"Connection to database failed: {e}")
+            write(f"Connection to database failed: {e}")
             return False
 
     async def execute_query(self, sql_query: str, file_name: str):
@@ -56,7 +58,7 @@ class PostgresDB:
             if not connection:
                 raise Exception(f"{file_name}: Could not connect to the database")
             else:
-                print(f"{file_name}: Connected")
+                write(f"{file_name}: Connected")
 
             async with connection.transaction():
                 cur = await connection.cursor(sql_query)
@@ -88,7 +90,7 @@ class PostgresDB:
                     # batched fetch_size > 0 path.
                     if self.fetch_size > 0 and batches % progress_every == 0:
                         now = datetime.now().strftime("%H:%M:%S")
-                        print(
+                        write(
                             f"[{now}] {file_name}: still fetching... "
                             f"{rows_fetched} rows so far"
                         )
@@ -96,10 +98,10 @@ class PostgresDB:
                     if self.printing:
                         if isinstance(rows, list):
                             for row in rows:
-                                print(row)
+                                write(row)
 
                 if rows_fetched > 0:
-                    print(f"{file_name}: {rows_fetched} rows")
+                    write(f"{file_name}: {rows_fetched} rows")
 
         finally:
             if connection:
@@ -114,7 +116,9 @@ class PostgresDB:
             return end_time - start_time
 
         except (asyncpg.PostgresError, OSError) as e:
-            print(f"{file_name}: Postgres-Error: {e}")
+            write(f"{file_name}: Postgres-Error: {e}")
+        finally:
+            query_finished()
 
     async def executor(self, bucket: list[tuple[str, str]]):
         tasks = []

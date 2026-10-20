@@ -1,6 +1,8 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
 
+from src.progress import set_progress_queue, write
+
 # Set once per worker process by `init_worker` via the Pool initializer.
 # A multiprocessing.Barrier cannot be passed as a pickled map() argument under
 # the "spawn" start method; it must be inherited through the initializer.
@@ -65,7 +67,7 @@ def future_thread_executor(
             try:
                 results.append(future.result())
             except Exception as e:
-                print(f"Thread task error: {e}")
+                write(f"Thread task error: {e}")
                 results.append(None)
 
     return results
@@ -96,15 +98,17 @@ def merge_durations(
         target.setdefault(file_name, []).extend(durations)
 
 
-def init_worker(barrier):
+def init_worker(barrier, progress_queue=None):
     """
     Pool initializer: runs once per worker as it starts up. Stashes the shared
     barrier in a module global so `worker` can reach it without it being passed
     through map() (which would fail to pickle under the spawn start method).
+    Query completions and output go to the parent through the progress queue.
     """
 
     global _barrier
     _barrier = barrier
+    set_progress_queue(progress_queue)
 
 
 def worker(payload):

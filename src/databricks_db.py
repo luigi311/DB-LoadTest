@@ -3,6 +3,7 @@ from datetime import datetime
 
 from databricks import sql
 from src.functions import future_thread_executor
+from src.progress import query_finished, write
 
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
 progress_every: int = 5
@@ -34,7 +35,7 @@ class DatabricksDB:
             ):
                 pass
         except Exception as e:
-            print(f"Connection to database failed: {e}")
+            write(f"Connection to database failed: {e}")
             return False
 
         return True
@@ -53,7 +54,7 @@ class DatabricksDB:
             if not connection:
                 raise Exception(f"{file_name}: Could not connect to the database")
             else:
-                print(f"{file_name}: Connected")
+                write(f"{file_name}: Connected")
 
             with connection.cursor() as cursor:
                 cursor.execute(sql_query)
@@ -74,14 +75,14 @@ class DatabricksDB:
                         # making progress (vs genuinely stuck).
                         if batches % progress_every == 0:
                             now = datetime.now().strftime("%H:%M:%S")
-                            print(
+                            write(
                                 f"[{now}] {file_name}: still fetching... "
                                 f"{rows_fetched} rows so far"
                             )
 
                         if self.printing:
                             for row in rows:
-                                print(row)
+                                write(row)
 
                 elif self.fetch_size == -1:
                     rows = cursor.fetchall()
@@ -90,7 +91,7 @@ class DatabricksDB:
 
                     if self.printing:
                         for row in rows:
-                            print(row)
+                            write(row)
 
                 else:
                     # No-fetch mode. Databricks/Spark is lazy and streaming, and
@@ -98,7 +99,7 @@ class DatabricksDB:
                     raise Exception("Databricks does not support fetch_size 0")
 
                 if rows_fetched > 0:
-                    print(f"{file_name}: Rows fetched: {rows_fetched}")
+                    write(f"{file_name}: Rows fetched: {rows_fetched}")
 
         finally:
             if connection:
@@ -113,8 +114,10 @@ class DatabricksDB:
             return file_name, end_time - start_time
 
         except Exception as e:
-            print(f"{file_name}: Databricks-Error: {e}")
+            write(f"{file_name}: Databricks-Error: {e}")
             return file_name, None
+        finally:
+            query_finished()
 
     def executor(self, bucket: list[tuple[str, str]]):
         # One thread per query in the bucket (override_threads) so they all fire
