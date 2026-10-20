@@ -3,6 +3,7 @@ import getpass
 import multiprocessing
 import os
 import time
+from queue import Queue
 
 from src.databricks_db import DatabricksDB
 from src.functions import (
@@ -14,6 +15,7 @@ from src.functions import (
 )
 from src.oracle_db import OracleDB
 from src.postgres_db import PostgresDB
+from src.progress import track_queries
 
 
 def read_sql_file(file_path: str) -> tuple[str, str]:
@@ -142,24 +144,37 @@ def execute_queries_concurrently(
     # Accumulate {file_name: [durations]} across all workers.
     results: dict[str, list[float]] = {}
 
-    if len(buckets) == 1:
-        # Single worker: nothing to synchronize, run inline without a barrier.
-        db = db_factory(**db_kwargs)
-        merge_durations(results, db.entry(buckets[0]))
-    else:
-        ctx = multiprocessing.get_context("spawn")
-        # Barrier sized to the worker count. Each worker waits here once it has
-        # spawned and built its DB object, so all processes leave together and
-        # begin connecting/executing at the same moment -- removing the
-        # staggered interpreter-startup time from the measured run.
-        barrier = ctx.Barrier(len(buckets))
-        with ctx.Pool(
-            processes=len(buckets),
-            initializer=init_worker,
-            initargs=(barrier,),
-        ) as pool:
-            for result in pool.map(worker, payloads):
-                merge_durations(results, result)
+    if not buckets:
+        report(results)
+        return
+
+    ctx = multiprocessing.get_context("spawn") if len(buckets) > 1 else None
+    progress_queue = ctx.Queue(maxsize=1000) if ctx is not None else Queue(maxsize=1000)
+    total = sum(map(len, buckets))
+    try:
+        with track_queries(total, progress_queue):
+            if ctx is None:
+                # Single worker: run inline while a thread renders progress.
+                db = db_factory(**db_kwargs)
+                merge_durations(results, db.entry(buckets[0]))
+            else:
+                # Release all processes together after they finish spawning.
+                barrier = ctx.Barrier(len(buckets))
+                with ctx.Pool(
+                    processes=len(buckets),
+                    initializer=init_worker,
+                    initargs=(barrier, progress_queue),
+                ) as pool:
+                    for result in pool.map(worker, payloads):
+                        merge_durations(results, result)
+                    # Flush every worker's progress messages before stopping
+                    # the listener, including the final query completions.
+                    pool.close()
+                    pool.join()
+    finally:
+        if ctx is not None:
+            progress_queue.close()
+            progress_queue.join_thread()
 
     report(results)
 

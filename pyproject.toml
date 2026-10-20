@@ -8,4 +8,5 @@ dependencies = [
     "asyncpg>=0.31.0",
     "databricks-sql-connector[pyarrow]>=4.2.6",
     "oracledb>=4.0.1",
+    "tqdm>=4.70.1",
 ]
