@@ -3,7 +3,7 @@ from datetime import datetime
 
 from databricks import sql
 from src.functions import future_thread_executor
-from src.progress import query_finished, write
+from src.progress import query_finished, query_phase, query_started, write
 
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
 progress_every: int = 5
@@ -53,12 +53,12 @@ class DatabricksDB:
 
             if not connection:
                 raise Exception(f"{file_name}: Could not connect to the database")
-            else:
-                write(f"{file_name}: Connected")
 
             with connection.cursor() as cursor:
+                query_phase("executing")
                 cursor.execute(sql_query)
 
+                query_phase("fetching")
                 rows_fetched = 0
                 if self.fetch_size > 0:
                     batches = 0
@@ -103,9 +103,11 @@ class DatabricksDB:
 
         finally:
             if connection:
+                query_phase("closing")
                 connection.close()
 
     def timer(self, sql_query: str, file_name: str):
+        token = query_started(file_name)
         try:
             start_time = time.monotonic()
             self.execute_query(sql_query, file_name)
@@ -117,7 +119,7 @@ class DatabricksDB:
             write(f"{file_name}: Databricks-Error: {e}")
             return file_name, None
         finally:
-            query_finished()
+            query_finished(token)
 
     def executor(self, bucket: list[tuple[str, str]]):
         # One thread per query in the bucket (override_threads) so they all fire

@@ -4,7 +4,7 @@ from datetime import datetime
 
 import asyncpg
 
-from src.progress import query_finished, write
+from src.progress import query_finished, query_phase, query_started, write
 
 max_fetch_size: int = 100_000_000
 
@@ -57,12 +57,12 @@ class PostgresDB:
 
             if not connection:
                 raise Exception(f"{file_name}: Could not connect to the database")
-            else:
-                write(f"{file_name}: Connected")
 
+            query_phase("executing")
             async with connection.transaction():
                 cur = await connection.cursor(sql_query)
 
+                query_phase("fetching")
                 rows_fetched = 0
                 batches = 0
                 while True:
@@ -105,9 +105,11 @@ class PostgresDB:
 
         finally:
             if connection:
+                query_phase("closing")
                 await connection.close()
 
     async def timer(self, sql_query: str, file_name: str):
+        token = query_started(file_name)
         try:
             start_time = time.time()
             await self.execute_query(sql_query, file_name)
@@ -118,7 +120,7 @@ class PostgresDB:
         except (asyncpg.PostgresError, OSError) as e:
             write(f"{file_name}: Postgres-Error: {e}")
         finally:
-            query_finished()
+            query_finished(token)
 
     async def executor(self, bucket: list[tuple[str, str]]):
         tasks = []
