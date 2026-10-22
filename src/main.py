@@ -3,7 +3,7 @@ import getpass
 import multiprocessing
 import os
 import time
-from contextlib import nullcontext
+from contextlib import ExitStack
 from datetime import datetime, timezone
 from queue import Queue
 
@@ -18,7 +18,13 @@ from src.functions import (
 from src.oracle_db import OracleDB
 from src.postgres_db import PostgresDB
 from src.progress import track_queries
-from src.results import QueryResult, write_results_csv
+from src.results import (
+    QueryResult,
+    summarize_durations,
+    summary_csv_path,
+    write_results_csv,
+    write_summary_csv,
+)
 
 
 def read_sql_file(file_path: str) -> tuple[str, str]:
@@ -72,7 +78,8 @@ def arguments() -> argparse.Namespace:
     parser.add_argument(
         "--csv",
         metavar="PATH",
-        help="Export per-instance results to a CSV file (overwrites the file)",
+        help="Export instance results to PATH and summaries to PATH_STEM_summary.csv "
+        "(overwrites both files)",
     )
     parser.add_argument(
         "--instances",
@@ -125,20 +132,26 @@ def report(results: dict[str, list[float]]) -> None:
     for file_name in sorted(results):
         durations = results[file_name]
         all_durations.extend(durations)
+        stats = summarize_durations(durations)
 
         print(f"\n{file_name}")
-        print(f"  Runs      : {len(durations)}")
-        print(f"  Aggregated: {sum(durations):.2f}s")
-        print(f"  Average   : {sum(durations) / len(durations):.2f}s")
-        print(f"  Minimum   : {min(durations):.2f}s")
-        print(f"  Maximum   : {max(durations):.2f}s")
+        print(f"  Samples   : {stats.sample_count}")
+        print(f"  Aggregated: {stats.aggregated_seconds:.2f}s")
+        print(f"  Average   : {stats.average_seconds:.2f}s")
+        print(f"  Median    : {stats.median_seconds:.2f}s")
+        print(f"  P95       : {stats.p95_seconds:.2f}s")
+        print(f"  Minimum   : {stats.minimum_seconds:.2f}s")
+        print(f"  Maximum   : {stats.maximum_seconds:.2f}s")
 
+    overall_stats = summarize_durations(all_durations)
     print(f"\n{'=' * 40}")
     print(f"Overall runs      : {len(all_durations)}")
-    print(f"Overall aggregated: {sum(all_durations):.2f}s")
-    print(f"Overall average   : {sum(all_durations) / len(all_durations):.2f}s")
-    print(f"Overall minimum   : {min(all_durations):.2f}s")
-    print(f"Overall maximum   : {max(all_durations):.2f}s")
+    print(f"Overall aggregated: {overall_stats.aggregated_seconds:.2f}s")
+    print(f"Overall average   : {overall_stats.average_seconds:.2f}s")
+    print(f"Overall median    : {overall_stats.median_seconds:.2f}s")
+    print(f"Overall p95       : {overall_stats.p95_seconds:.2f}s")
+    print(f"Overall minimum   : {overall_stats.minimum_seconds:.2f}s")
+    print(f"Overall maximum   : {overall_stats.maximum_seconds:.2f}s")
     print(f"{'=' * 40}")
 
 
@@ -246,11 +259,16 @@ def main():
         "instances_per_query": args.instances,
         "fetch_size": args.fetch_size,
     }
-    output = (
-        open(args.csv, "w", newline="", encoding="utf-8")
-        if args.csv else nullcontext()
-    )
-    with output as csv_file:
+    summary_path = summary_csv_path(args.csv) if args.csv else None
+    with ExitStack() as stack:
+        csv_file = (
+            stack.enter_context(open(args.csv, "w", newline="", encoding="utf-8"))
+            if args.csv else None
+        )
+        summary_file = (
+            stack.enter_context(open(summary_path, "w", newline="", encoding="utf-8"))
+            if summary_path is not None else None
+        )
         start_time = time.monotonic()
         try:
             execute_queries_concurrently(
@@ -260,9 +278,12 @@ def main():
             end_time = time.monotonic()
             if csv_file is not None:
                 write_results_csv(csv_file, result_rows, settings)
+            if summary_file is not None:
+                write_summary_csv(summary_file, result_rows, settings, end_time - start_time)
 
     if args.csv:
         print(f"Results exported to: {args.csv}")
+        print(f"Summary exported to: {summary_path}")
 
     total_time = end_time - start_time
     print(f"Walltime          : {total_time:.2f}s")
