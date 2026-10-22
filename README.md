@@ -43,6 +43,14 @@ SQL file multiplied by `--instances`, across all worker processes. Both successf
 and failed instances advance the bar when they finish. While waiting for updates,
 the bar refreshes every second.
 
+Interactive terminals also show active query instances below the progress bar,
+with the SQL filename, instance number, current client phase (connecting, executing,
+fetching, or closing), and elapsed time. Instance numbers are assigned per SQL
+filename as instances start. The view refreshes every second and shows up to ten
+of the oldest active instances, with a count of any additional instances. Finished
+and failed instances leave the list automatically. When output is redirected, the
+progress line includes the oldest active instance instead of a multiline display.
+
 ### Arguments
 
     --dsn: Data Source Name (DSN) for the database.

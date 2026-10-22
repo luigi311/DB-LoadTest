@@ -4,7 +4,7 @@ from datetime import datetime
 
 import oracledb
 
-from src.progress import query_finished, write
+from src.progress import query_finished, query_phase, query_started, write
 
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
 progress_every: int = 5
@@ -56,15 +56,15 @@ class OracleDB:
 
             if not connection:
                 raise Exception(f"{file_name}: Could not connect to the database")
-            else:
-                write(f"{file_name}: Connected")
 
             with connection.cursor(scrollable=True) as cursor:
                 if self.fetch_size != 0:
                     cursor.arraysize = (
                         self.fetch_size if self.fetch_size > 0 else max_fetch_size
                     )
+                query_phase("executing")
                 await cursor.execute(sql_query)
+                query_phase("fetching")
 
                 rows_fetched = 0
                 if self.fetch_size > 0:
@@ -108,9 +108,11 @@ class OracleDB:
 
         finally:
             if connection:
+                query_phase("closing")
                 await connection.close()
 
     async def timer(self, sql_query: str, file_name: str):
+        token = query_started(file_name)
         try:
             start_time = time.time()
             await self.execute_query(sql_query, file_name)
@@ -122,7 +124,7 @@ class OracleDB:
             write(f"{file_name}: Oracle-Error-Code: {e.args[0].code}")
             write(f"{file_name}: Oracle-Error-Message: {e.args[0].message}")
         finally:
-            query_finished()
+            query_finished(token)
 
     async def executor(self, bucket: list[tuple[str, str]]):
         tasks = []
