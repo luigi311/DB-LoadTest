@@ -3,6 +3,8 @@ import getpass
 import multiprocessing
 import os
 import time
+from contextlib import nullcontext
+from datetime import datetime, timezone
 from queue import Queue
 
 from src.databricks_db import DatabricksDB
@@ -16,6 +18,7 @@ from src.functions import (
 from src.oracle_db import OracleDB
 from src.postgres_db import PostgresDB
 from src.progress import track_queries
+from src.results import QueryResult, write_results_csv
 
 
 def read_sql_file(file_path: str) -> tuple[str, str]:
@@ -65,6 +68,11 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--sql_file", help="Path to the SQL file")
     parser.add_argument(
         "--sql_folder", help="Path to the folder containing multiple SQL files"
+    )
+    parser.add_argument(
+        "--csv",
+        metavar="PATH",
+        help="Export per-instance results to a CSV file (overwrites the file)",
     )
     parser.add_argument(
         "--instances",
@@ -138,6 +146,7 @@ def execute_queries_concurrently(
     db_factory,
     db_kwargs: dict,
     buckets: list[list[tuple[str, str]]],
+    result_rows: list[QueryResult] | None = None,
 ):
     payloads = [(db_factory, db_kwargs, bucket) for bucket in buckets]
 
@@ -152,7 +161,7 @@ def execute_queries_concurrently(
     progress_queue = ctx.Queue(maxsize=1000) if ctx is not None else Queue(maxsize=1000)
     total = sum(map(len, buckets))
     try:
-        with track_queries(total, progress_queue):
+        with track_queries(total, progress_queue, result_rows):
             if ctx is None:
                 # Single worker: run inline while a thread renders progress.
                 db = db_factory(**db_kwargs)
@@ -229,9 +238,31 @@ def main():
     processes = resolve_process_count(args.processes)
     buckets = build_buckets(queries, args.instances, processes)
 
-    start_time = time.monotonic()
-    execute_queries_concurrently(db_factory, db_kwargs, buckets)
-    end_time = time.monotonic()
+    result_rows: list[QueryResult] = []
+    settings = {
+        "run_started_at": datetime.now(timezone.utc).isoformat(),
+        "database": args.database,
+        "processes": len(buckets),
+        "instances_per_query": args.instances,
+        "fetch_size": args.fetch_size,
+    }
+    output = (
+        open(args.csv, "w", newline="", encoding="utf-8")
+        if args.csv else nullcontext()
+    )
+    with output as csv_file:
+        start_time = time.monotonic()
+        try:
+            execute_queries_concurrently(
+                db_factory, db_kwargs, buckets, result_rows if args.csv else None
+            )
+        finally:
+            end_time = time.monotonic()
+            if csv_file is not None:
+                write_results_csv(csv_file, result_rows, settings)
+
+    if args.csv:
+        print(f"Results exported to: {args.csv}")
 
     total_time = end_time - start_time
     print(f"Walltime          : {total_time:.2f}s")
