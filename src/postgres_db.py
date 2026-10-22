@@ -1,10 +1,9 @@
 import asyncio
-import time
 from datetime import datetime
 
 import asyncpg
 
-from src.progress import query_finished, query_phase, query_started, write
+from src.progress import measure_query, query_phase, write
 
 max_fetch_size: int = 100_000_000
 
@@ -109,18 +108,14 @@ class PostgresDB:
                 await connection.close()
 
     async def timer(self, sql_query: str, file_name: str):
-        token = query_started(file_name)
         try:
-            start_time = time.time()
-            await self.execute_query(sql_query, file_name)
-            end_time = time.time()
+            with measure_query(file_name) as outcome:
+                await self.execute_query(sql_query, file_name)
 
-            return end_time - start_time
+            return outcome.duration_seconds
 
         except (asyncpg.PostgresError, OSError) as e:
             write(f"{file_name}: Postgres-Error: {e}")
-        finally:
-            query_finished(token)
 
     async def executor(self, bucket: list[tuple[str, str]]):
         tasks = []

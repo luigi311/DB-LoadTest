@@ -1,9 +1,8 @@
-import time
 from datetime import datetime
 
 from databricks import sql
 from src.functions import future_thread_executor
-from src.progress import query_finished, query_phase, query_started, write
+from src.progress import measure_query, query_phase, write
 
 # Print a progress heartbeat every N fetched batches when fetch_size > 0.
 progress_every: int = 5
@@ -107,19 +106,15 @@ class DatabricksDB:
                 connection.close()
 
     def timer(self, sql_query: str, file_name: str):
-        token = query_started(file_name)
         try:
-            start_time = time.monotonic()
-            self.execute_query(sql_query, file_name)
-            end_time = time.monotonic()
+            with measure_query(file_name) as outcome:
+                self.execute_query(sql_query, file_name)
 
-            return file_name, end_time - start_time
+            return file_name, outcome.duration_seconds
 
         except Exception as e:
             write(f"{file_name}: Databricks-Error: {e}")
             return file_name, None
-        finally:
-            query_finished(token)
 
     def executor(self, bucket: list[tuple[str, str]]):
         # One thread per query in the bucket (override_threads) so they all fire

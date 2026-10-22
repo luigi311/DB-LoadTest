@@ -10,6 +10,8 @@ from time import monotonic
 
 from tqdm import tqdm
 
+from src.results import QueryOutcome, QueryResult
+
 PROGRESS_REFRESH_INTERVAL_SECONDS = 1
 MAX_ACTIVE_QUERY_ROWS = 10
 
@@ -40,11 +42,29 @@ def query_phase(phase):
         _progress_queue.put(("phase", (query_id, phase)))
 
 
-def query_finished(token=None):
+def query_finished(token=None, outcome=None):
     if _progress_queue is not None:
-        _progress_queue.put(("completed", _current_query.get()))
+        _progress_queue.put(
+            ("completed", outcome if outcome is not None else _current_query.get())
+        )
     if token is not None:
         _current_query.reset(token)
+
+
+@contextmanager
+def measure_query(file_name):
+    token = query_started(file_name)
+    outcome = QueryOutcome(query_id=_current_query.get())
+    started_at = monotonic()
+    try:
+        yield outcome
+    except BaseException as error:
+        outcome.status = "error" if isinstance(error, Exception) else "cancelled"
+        outcome.error = str(error) or type(error).__name__
+        raise
+    finally:
+        outcome.duration_seconds = monotonic() - started_at
+        query_finished(token, outcome)
 
 
 def write(message):
@@ -146,7 +166,7 @@ class ActiveQueryDisplay:
 
 
 @contextmanager
-def track_queries(total, progress_queue):
+def track_queries(total, progress_queue, result_rows=None):
     """Render worker output and per-query progress in the parent process."""
     previous_queue = _progress_queue
     set_progress_queue(progress_queue)
@@ -183,7 +203,22 @@ def track_queries(total, progress_queue):
                         elif kind == "phase":
                             display.phase_changed(*message)
                         elif kind == "completed":
-                            display.finished(message)
+                            if isinstance(message, QueryOutcome):
+                                query_id = message.query_id
+                                query = display.active.get(query_id)
+                                if result_rows is not None and query is not None:
+                                    result_rows.append(
+                                        QueryResult(
+                                            sql_file=query.file_name,
+                                            instance=query.instance,
+                                            status=message.status,
+                                            duration_seconds=message.duration_seconds,
+                                            error=message.error,
+                                        )
+                                    )
+                            else:
+                                query_id = message
+                            display.finished(query_id)
                             display.update_counts(completed=progress.n + 1)
                             progress.update(1)
                         else:
